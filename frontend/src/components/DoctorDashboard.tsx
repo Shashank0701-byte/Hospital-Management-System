@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from '../lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import io from 'socket.io-client';
+import { apiFetch, API_BASE } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { auth } from '../lib/firebase';
 import styles from './PortalPages.module.css';
 
 type PatientRow = { _id: string; name: string; visits: number; lastVisit?: string };
@@ -17,7 +19,8 @@ async function readJson<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export default function DoctorDashboard({ onLogout }: Props) {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const socketRef = useRef<ReturnType<typeof io> | null>(null);
   const [tab, setTab] = useState<'appointments' | 'patients'>('appointments');
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [patients, setPatients] = useState<PatientRow[]>([]);
@@ -40,6 +43,23 @@ export default function DoctorDashboard({ onLogout }: Props) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  useEffect(() => {
+    let active = true;
+    if (!user || !auth) return undefined;
+    void user.getIdToken().then(token => {
+      if (!active) return;
+      const connection = io(API_BASE, { auth: { token } });
+      socketRef.current = connection;
+      connection.on('appointment:requested', () => void refresh());
+      connection.on('appointment:updated', () => void refresh());
+    }).catch(reason => setError(reason instanceof Error ? reason.message : 'Could not connect to live appointment updates.'));
+    return () => {
+      active = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [user, refresh]);
+
   async function openPatient(patientId: string) {
     setSelected(null); setWorking(patientId); setError('');
     try { setSelected(await readJson<PatientDetail>(`/api/doctor/patients/${patientId}`)); }
@@ -47,8 +67,8 @@ export default function DoctorDashboard({ onLogout }: Props) {
     finally { setWorking(''); }
   }
 
-  async function updateStatus(appointment: Appointment) {
-    const nextStatus = appointment.status === 'In Progress' ? 'Completed' : 'In Progress';
+  async function updateStatus(appointment: Appointment, overrideStatus?: string) {
+    const nextStatus = overrideStatus || (appointment.status === 'In Progress' ? 'Completed' : 'In Progress');
     setWorking(appointment._id); setError('');
     try {
       const updated = await readJson<Appointment>(`/api/doctor/appointments/${appointment._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: nextStatus }) });
@@ -59,7 +79,7 @@ export default function DoctorDashboard({ onLogout }: Props) {
 
   return <main className={styles.staffPage}>
     <header className={styles.staffHeader}>
-      <a className={styles.brand} href="/doctor"><img src="/stellarcare-mark.png" alt=""/><span>StellarCare<small>DOCTOR WORKSPACE</small></span></a>
+      <a className={styles.brand} href="/doctor"><img src="/stellarcare-mark.png" alt=""/><span>Hospital Management<small>DOCTOR WORKSPACE</small></span></a>
       <div className={styles.staffHeaderActions}><span>{profile?.displayName}{profile?.specialty ? ` · ${profile.specialty}` : ''}</span><button onClick={() => void refresh()} disabled={loading}>Refresh</button><button onClick={onLogout}>Sign out</button></div>
     </header>
     <section className={styles.staffIntro}><div className={styles.eyebrow}>CARE TEAM WORKSPACE</div><h1>Your patients, in your care.</h1><p>Review assigned patient records and update visit progress.</p></section>
@@ -67,7 +87,7 @@ export default function DoctorDashboard({ onLogout }: Props) {
     {error && <div className={styles.notice} role="alert">{error}</div>}
     {loading ? <div className={styles.panel}>Loading your assigned work…</div> : tab === 'appointments' ? <section className={styles.panel}>
       <h2>Appointment requests and visits</h2>
-      {appointments.length === 0 ? <p className={styles.muted}>No appointments are assigned to you yet.</p> : <div className={styles.list}>{appointments.map(item => <article className={styles.row} key={item._id}><div><strong>{item.patientName}</strong><p>{item.preferredTime} · Requested for {item.doctorName}</p><span className={styles.badge}>{item.status}</span></div><div className={styles.rowActions}>{item.patientId && <button onClick={() => { setTab('patients'); void openPatient(item.patientId!); }}>Patient record</button>}{item.status !== 'Completed' && item.status !== 'Cancelled' && <button disabled={working === item._id} onClick={() => void updateStatus(item)}>{working === item._id ? 'Saving…' : item.status === 'In Progress' ? 'Mark completed' : 'Start visit'}</button>}</div></article>)}</div>}
+      {appointments.length === 0 ? <p className={styles.muted}>No appointments are assigned to you yet.</p> : <div className={styles.list}>{appointments.map(item => <article className={styles.row} key={item._id}><div><strong>{item.patientName}</strong><p>{item.preferredTime} · Requested for {item.doctorName}</p><span className={`${styles.badge} ${item.status === 'Requested' ? styles.badgePending : item.status === 'Completed' ? styles.badgeDone : ''}`}>{item.status}</span></div><div className={styles.rowActions}>{item.patientId && <button onClick={() => { setTab('patients'); void openPatient(item.patientId!); }}>Patient record</button>}{item.status === 'Requested' && <><button className={styles.acceptBtn} disabled={working === item._id} onClick={() => void updateStatus(item, 'Scheduled')}>✓ Accept</button><button className={styles.rejectBtn} disabled={working === item._id} onClick={() => void updateStatus(item, 'Cancelled')}>✗ Reject</button></>}{item.status !== 'Completed' && item.status !== 'Cancelled' && item.status !== 'Requested' && <button disabled={working === item._id} onClick={() => void updateStatus(item)}>{working === item._id ? 'Saving…' : item.status === 'In Progress' ? 'Mark completed' : 'Start visit'}</button>}</div></article>)}</div>}
     </section> : <div className={styles.doctorGrid}><section className={styles.panel}><h2>Assigned patients</h2>{patients.length === 0 ? <p className={styles.muted}>No patients are assigned to your account. Ask an employee to link a booking to a record.</p> : <div className={styles.list}>{patients.map(patient => <button className={styles.patientButton} key={patient._id} onClick={() => void openPatient(patient._id)}><span><strong>{patient.name}</strong><small>{patient.visits} previous visits{patient.lastVisit ? ` · Last visit ${new Date(patient.lastVisit).toLocaleDateString()}` : ''}</small></span><span>{working === patient._id ? 'Loading…' : 'View record →'}</span></button>)}</div>}</section>
       <section className={styles.panel}><h2>{selected ? selected.name : 'Patient record'}</h2>{!selected ? <p className={styles.muted}>Select an assigned patient to view authorized clinical information and visit history.</p> : <div className={styles.record}><p>{[selected.age !== undefined ? `${selected.age} years` : '', selected.gender || ''].filter(Boolean).join(' · ') || 'Demographics not provided'}</p><h3>Clinical summary</h3><p>{selected.historySummary || 'No summary recorded.'}</p><h3>Conditions</h3><div className={styles.chips}>{selected.conditions.length ? selected.conditions.map(value => <span key={value}>{value}</span>) : <span>None listed</span>}</div><h3>Allergies</h3><div className={styles.chips}>{selected.allergies.length ? selected.allergies.map(value => <span key={value}>{value}</span>) : <span>None listed</span>}</div><h3>Visit history</h3>{selected.visitHistory.length ? selected.visitHistory.map(visit => <article className={styles.history} key={visit._id}><strong>{visit.visitedAt ? new Date(visit.visitedAt).toLocaleDateString() : 'Date not recorded'} · {visit.status || 'Visit'}</strong><p>{visit.summary || 'No visit summary recorded.'}</p></article>) : <p className={styles.muted}>No past visits recorded.</p>}</div>}</section></div>}
     <footer className={styles.footer}>Patient details are limited to your active clinic assignments. Follow clinic policy when documenting or updating care.</footer>

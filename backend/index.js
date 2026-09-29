@@ -39,7 +39,7 @@ const bookingSchema = z.object({
   preferredTime: z.string().trim().min(2).max(100),
   contactInfo: z.string().trim().min(3).max(190),
 });
-const statusSchema = z.object({ status: z.enum(['Waiting', 'In Progress', 'Completed']) });
+const statusSchema = z.object({ status: z.enum(['Waiting', 'In Progress', 'Completed', 'Cancelled']) });
 const employeeStatusSchema = z.object({ status: z.enum(['Scheduled']) });
 const patientCreateSchema = z.object({ name: z.string().trim().min(2).max(160), doctorId: z.string().regex(/^[a-f\d]{24}$/i) });
 const objectId = value => mongoose.isValidObjectId(value);

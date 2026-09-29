@@ -334,6 +334,12 @@
 .row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: #fafafa; }
 .row p { margin: 5px 0 8px; color: var(--muted); font-size: 13px; }
 .badge { display: inline-flex; border-radius: 999px; background: #eff6ff; padding: 6px 10px; color: #1e40af; font-size: 11px; font-weight: 700; }
+.badgePending { background: #fef3c7; color: #92400e; }
+.badgeDone { background: #ecfdf5; color: #059669; }
+.acceptBtn { border: 1px solid #bbf7d0 !important; background: #ecfdf5 !important; color: #059669 !important; font-weight: 700; }
+.acceptBtn:hover { background: #d1fae5 !important; border-color: #86efac !important; }
+.rejectBtn { border: 1px solid #fecaca !important; background: #fef2f2 !important; color: #dc2626 !important; font-weight: 700; }
+.rejectBtn:hover { background: #fee2e2 !important; border-color: #fca5a5 !important; }
 .rowActions { display: flex; gap: 8px; flex-wrap: wrap; }
 .patientButton { display: flex; justify-content: space-between; align-items: center; gap: 12px; width: 100%; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #fff; text-align: left; color: var(--ink); cursor: pointer; transition: all 0.2s; }
 .patientButton:hover { background: #f8fafc; border-color: #cbd5e1; transform: translateY(-1px); box-shadow: var(--shadow-sm); }

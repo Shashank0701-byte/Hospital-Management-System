@@ -8,6 +8,7 @@
     "dev": "nodemon index.js",
     "test": "node --test",
     "provision:staff": "node scripts/provision-staff.js",
+    "verify:staff-email": "node scripts/verify-staff-email.js",
     "seed:demo": "node scripts/seed-demo.js",
     "migrate:legacy": "node scripts/migrate-legacy.js"
   },

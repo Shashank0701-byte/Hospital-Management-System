@@ -5,6 +5,17 @@ import { auth, firebaseConfigured } from '../lib/firebase';
 import styles from './PortalPages.module.css';
 
 type Role = 'doctor' | 'employee';
+
+function signInError(reason: unknown) {
+  const code = typeof reason === 'object' && reason !== null && 'code' in reason ? String(reason.code) : '';
+  if (['auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/user-not-found', 'auth/wrong-password'].includes(code)) return 'Incorrect email or password.';
+  if (code === 'auth/operation-not-allowed') return 'Email/password sign-in is disabled in Firebase Authentication. Enable it under Sign-in method.';
+  if (code === 'auth/invalid-api-key') return 'Firebase configuration is invalid. Check the web app API key and project settings.';
+  if (code === 'auth/network-request-failed') return 'Firebase could not be reached. Check your internet connection and try again.';
+  if (code === 'auth/too-many-requests') return 'Too many sign-in attempts. Wait a few minutes and try again.';
+  return null;
+}
+
 export default function StaffLogin({ role, onNavigate }: { role: Role; onNavigate: (path: string) => void }) {
   const { reloadProfile } = useAuth();
   const [email, setEmail] = useState('');
@@ -26,8 +37,9 @@ export default function StaffLogin({ role, onNavigate }: { role: Role; onNavigat
       onNavigate(role === 'doctor' ? '/doctor' : '/employee');
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : '';
+      const firebaseMessage = signInError(reason);
       const isActionableStaffError = /registered as|not provisioned|not enabled for staff|role claims are missing or stale|verify your staff email/i.test(message);
-      setError(isActionableStaffError ? message : 'Sign-in failed. Check your credentials and staff access, then try again.');
+      setError(firebaseMessage || (isActionableStaffError ? message : 'Sign-in failed. Check your credentials and staff access, then try again.'));
     } finally { setBusy(false); }
   }
 
